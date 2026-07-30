@@ -7,8 +7,31 @@ import Observation
 final class NearbyFriendsViewModel {
     private static let staleLocationAge: TimeInterval = 30 * 60
     private static let nearbyRadiusMeters: CLLocationDistance = 500
+    private static let followRegionSpan = MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
 
     private(set) var friends: [Friend] = []
+    private(set) var followedFriendID: Friend.ID?
+
+    var followedFriend: Friend? {
+        guard let followedFriendID else { return nil }
+
+        return friends.first { $0.id == followedFriendID }
+    }
+
+    var followedFriendRegion: MKCoordinateRegion? {
+        guard let followedFriend else { return nil }
+
+        return MKCoordinateRegion(
+            center: followedFriend.coordinate,
+            span: Self.followRegionSpan
+        )
+    }
+
+    var followedFriendMapFocus: FriendMapFocus? {
+        guard let followedFriend else { return nil }
+
+        return FriendMapFocus(friend: followedFriend)
+    }
 
     var friendAnnotations: [FriendMapAnnotation] {
         let now = now()
@@ -60,6 +83,14 @@ final class NearbyFriendsViewModel {
         }
     }
 
+    func followFriend(id: Friend.ID) {
+        followedFriendID = id
+    }
+
+    func stopFollowing() {
+        followedFriendID = nil
+    }
+
     private func handleSnapshot(
         _ snapshot: [Friend],
         canNotify: Bool
@@ -70,6 +101,10 @@ final class NearbyFriendsViewModel {
 
         friends = snapshot
         nearbyFriendIDs = nearbyIDs
+
+        if let followedFriendID, !snapshot.contains(where: { $0.id == followedFriendID }) {
+            stopFollowing()
+        }
 
         guard hasObservedInitialSnapshot else {
             hasObservedInitialSnapshot = true
@@ -113,5 +148,17 @@ struct FriendMapAnnotation: Identifiable, Equatable {
 
     var coordinate: CLLocationCoordinate2D {
         friend.coordinate
+    }
+}
+
+struct FriendMapFocus: Equatable {
+    let friendID: Friend.ID
+    let latitude: CLLocationDegrees
+    let longitude: CLLocationDegrees
+
+    init(friend: Friend) {
+        self.friendID = friend.id
+        self.latitude = friend.coordinate.latitude
+        self.longitude = friend.coordinate.longitude
     }
 }

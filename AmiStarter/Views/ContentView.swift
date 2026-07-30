@@ -8,8 +8,32 @@
 import SwiftUI
 
 struct ContentView: View {
+    @State private var viewModel = NearbyFriendsViewModel()
+    @State private var isShowingFriendsList = false
+
     var body: some View {
-        NearbyFriendsMapView()
+        NavigationStack {
+            NearbyFriendsMapView(viewModel: viewModel)
+                .navigationTitle("AmiStarter")
+                .toolbar {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            isShowingFriendsList = true
+                        } label: {
+                            Image(systemName: "list.bullet")
+                        }
+                        .accessibilityLabel("Friends")
+                    }
+                }
+                .sheet(isPresented: $isShowingFriendsList) {
+                    NavigationStack {
+                        FriendsListView(viewModel: viewModel)
+                    }
+                }
+        }
+        .task {
+            await viewModel.loadFriends()
+        }
     }
 }
 
