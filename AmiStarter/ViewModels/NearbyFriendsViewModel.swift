@@ -6,6 +6,7 @@ import Observation
 @Observable
 final class NearbyFriendsViewModel {
     private static let staleLocationAge: TimeInterval = 30 * 60
+    private static let nearbyRadiusMeters: CLLocationDistance = 500
 
     private(set) var friends: [Friend] = []
 
@@ -24,17 +25,25 @@ final class NearbyFriendsViewModel {
     let initialRegion: MKCoordinateRegion
 
     private let friendService: FriendServiceProtocol
+    private let notificationService: NearbyFriendNotificationScheduling
     private let now: () -> Date
+    private var hasObservedInitialSnapshot = false
+    private var nearbyFriendIDs = Set<Friend.ID>()
 
     convenience init() {
-        self.init(friendService: MockFriendService())
+        self.init(
+            friendService: MockFriendService(),
+            notificationService: LocalNearbyFriendNotificationService()
+        )
     }
 
     init(
         friendService: FriendServiceProtocol,
+        notificationService: NearbyFriendNotificationScheduling,
         now: @escaping () -> Date = Date.init
     ) {
         self.friendService = friendService
+        self.notificationService = notificationService
         self.now = now
         self.userLocation = friendService.userLocation
         self.initialRegion = MKCoordinateRegion(
@@ -44,9 +53,45 @@ final class NearbyFriendsViewModel {
     }
 
     func loadFriends() async {
+        let canNotify = await notificationService.requestAuthorization()
+
         for await snapshot in friendService.friendSnapshots() {
-            friends = snapshot
+            await handleSnapshot(snapshot, canNotify: canNotify)
         }
+    }
+
+    private func handleSnapshot(
+        _ snapshot: [Friend],
+        canNotify: Bool
+    ) async {
+        let nearbyFriends = snapshot.filter(isNearby)
+        let nearbyIDs = Set(nearbyFriends.map(\.id))
+        let newlyNearbyFriends = nearbyFriends.filter { !nearbyFriendIDs.contains($0.id) }
+
+        friends = snapshot
+        nearbyFriendIDs = nearbyIDs
+
+        guard hasObservedInitialSnapshot else {
+            hasObservedInitialSnapshot = true
+            return
+        }
+
+        if canNotify, !newlyNearbyFriends.isEmpty {
+            await notificationService.notifyNearbyFriends(newlyNearbyFriends)
+        }
+    }
+
+    private func isNearby(_ friend: Friend) -> Bool {
+        let userLocation = CLLocation(
+            latitude: userLocation.latitude,
+            longitude: userLocation.longitude
+        )
+        let friendLocation = CLLocation(
+            latitude: friend.coordinate.latitude,
+            longitude: friend.coordinate.longitude
+        )
+
+        return userLocation.distance(from: friendLocation) <= Self.nearbyRadiusMeters
     }
 }
 

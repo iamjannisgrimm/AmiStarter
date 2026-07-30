@@ -14,11 +14,16 @@ struct NearbyFriendsViewModelTests {
             )
         ]
         let service = MockFriendStreamService(snapshots: [expectedFriends])
-        let viewModel = NearbyFriendsViewModel(friendService: service)
+        let notificationService = MockNearbyFriendNotificationService()
+        let viewModel = NearbyFriendsViewModel(
+            friendService: service,
+            notificationService: notificationService
+        )
 
         await viewModel.loadFriends()
 
         #expect(viewModel.friends == expectedFriends)
+        #expect(notificationService.authorizationRequestCount == 1)
     }
 
     @Test func friendAnnotationsMarkLocationsOlderThanThirtyMinutesAsStale() async {
@@ -36,7 +41,11 @@ struct NearbyFriendsViewModelTests {
             lastUpdated: now.addingTimeInterval(-31 * 60)
         )
         let service = MockFriendStreamService(snapshots: [[freshFriend, staleFriend]])
-        let viewModel = NearbyFriendsViewModel(friendService: service, now: { now })
+        let viewModel = NearbyFriendsViewModel(
+            friendService: service,
+            notificationService: MockNearbyFriendNotificationService(),
+            now: { now }
+        )
 
         await viewModel.loadFriends()
 
@@ -47,6 +56,96 @@ struct NearbyFriendsViewModelTests {
         #expect(annotations.last?.isStale == true)
         #expect(annotations.last?.displayName == "Sam Okafor (Stale)")
         #expect(annotations.last?.systemImageName == "clock.badge.exclamationmark")
+    }
+
+    @Test func loadFriendsDoesNotNotifyForInitiallyNearbyFriends() async {
+        let nearbyFriend = Friend(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            displayName: "Ada Chen",
+            coordinate: CLLocationCoordinate2D(latitude: 37.7752, longitude: -122.4196),
+            lastUpdated: Date(timeIntervalSince1970: 1_800)
+        )
+        let service = MockFriendStreamService(snapshots: [[nearbyFriend]])
+        let notificationService = MockNearbyFriendNotificationService()
+        let viewModel = NearbyFriendsViewModel(
+            friendService: service,
+            notificationService: notificationService
+        )
+
+        await viewModel.loadFriends()
+
+        #expect(notificationService.notifiedFriendGroups.isEmpty)
+    }
+
+    @Test func loadFriendsNotifiesWhenFriendBecomesNearby() async {
+        let friendID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+        let farFriend = Friend(
+            id: friendID,
+            displayName: "Dana Lee",
+            coordinate: CLLocationCoordinate2D(latitude: 37.7839, longitude: -122.4114),
+            lastUpdated: Date(timeIntervalSince1970: 1_800)
+        )
+        let nearbyFriend = Friend(
+            id: friendID,
+            displayName: "Dana Lee",
+            coordinate: CLLocationCoordinate2D(latitude: 37.7752, longitude: -122.4196),
+            lastUpdated: Date(timeIntervalSince1970: 1_900)
+        )
+        let service = MockFriendStreamService(snapshots: [[farFriend], [nearbyFriend]])
+        let notificationService = MockNearbyFriendNotificationService()
+        let viewModel = NearbyFriendsViewModel(
+            friendService: service,
+            notificationService: notificationService
+        )
+
+        await viewModel.loadFriends()
+
+        #expect(notificationService.notifiedFriendGroups.count == 1)
+        #expect(notificationService.notifiedFriendGroups.first == [nearbyFriend])
+    }
+
+    @Test func loadFriendsGroupsFriendsThatBecomeNearbyTogether() async {
+        let firstID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+        let secondID = UUID(uuidString: "00000000-0000-0000-0000-000000000002")!
+        let farFriends = [
+            Friend(
+                id: firstID,
+                displayName: "Dana Lee",
+                coordinate: CLLocationCoordinate2D(latitude: 37.7839, longitude: -122.4114),
+                lastUpdated: Date(timeIntervalSince1970: 1_800)
+            ),
+            Friend(
+                id: secondID,
+                displayName: "Marco Diaz",
+                coordinate: CLLocationCoordinate2D(latitude: 37.7844, longitude: -122.4108),
+                lastUpdated: Date(timeIntervalSince1970: 1_800)
+            )
+        ]
+        let nearbyFriends = [
+            Friend(
+                id: firstID,
+                displayName: "Dana Lee",
+                coordinate: CLLocationCoordinate2D(latitude: 37.7752, longitude: -122.4196),
+                lastUpdated: Date(timeIntervalSince1970: 1_900)
+            ),
+            Friend(
+                id: secondID,
+                displayName: "Marco Diaz",
+                coordinate: CLLocationCoordinate2D(latitude: 37.7753, longitude: -122.4198),
+                lastUpdated: Date(timeIntervalSince1970: 1_900)
+            )
+        ]
+        let service = MockFriendStreamService(snapshots: [farFriends, nearbyFriends])
+        let notificationService = MockNearbyFriendNotificationService()
+        let viewModel = NearbyFriendsViewModel(
+            friendService: service,
+            notificationService: notificationService
+        )
+
+        await viewModel.loadFriends()
+
+        #expect(notificationService.notifiedFriendGroups.count == 1)
+        #expect(notificationService.notifiedFriendGroups.first == nearbyFriends)
     }
 }
 
@@ -66,5 +165,19 @@ private final class MockFriendStreamService: FriendServiceProtocol {
             }
             continuation.finish()
         }
+    }
+}
+
+private final class MockNearbyFriendNotificationService: NearbyFriendNotificationScheduling {
+    private(set) var authorizationRequestCount = 0
+    private(set) var notifiedFriendGroups: [[Friend]] = []
+
+    func requestAuthorization() async -> Bool {
+        authorizationRequestCount += 1
+        return true
+    }
+
+    func notifyNearbyFriends(_ friends: [Friend]) async {
+        notifiedFriendGroups.append(friends)
     }
 }
