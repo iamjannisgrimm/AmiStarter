@@ -27,7 +27,7 @@ import Foundation
 ///   • Fresh friends drift slightly and have their timestamps refreshed each tick.
 ///   • A few seconds in, one friend ("Dana Lee") moves close to
 ///     `currentUserLocation` — a clear "a new nearby friend appeared" moment.
-final class MockFriendService {
+final class MockFriendService: FriendServiceProtocol {
     /// A reasonable "you are here" reference point (downtown San Francisco). Use
     /// it as the origin for proximity — or swap in Core Location if you prefer.
     static let currentUserLocation = CLLocationCoordinate2D(
@@ -40,10 +40,27 @@ final class MockFriendService {
 
     private var task: Task<Void, Never>?
 
+    var userLocation: CLLocationCoordinate2D {
+        Self.currentUserLocation
+    }
+
+    func friendSnapshots() -> AsyncStream<[Friend]> {
+        AsyncStream { continuation in
+            start { friends in
+                continuation.yield(friends)
+            }
+
+            continuation.onTermination = { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.stop()
+                }
+            }
+        }
+    }
+
     /// Begin emitting snapshots. `onUpdate` is called on the main actor with the
     /// latest set of friends, starting immediately and then roughly every 2
     /// seconds. Call `stop()` when you're done.
-    @MainActor
     func start(onUpdate: @escaping ([Friend]) -> Void) {
         stop()
         task = Task { @MainActor in
