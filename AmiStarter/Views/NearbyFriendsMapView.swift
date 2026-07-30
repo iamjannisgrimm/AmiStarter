@@ -9,9 +9,13 @@ struct NearbyFriendsMapView: View {
             Marker("You", systemImage: "location.fill", coordinate: viewModel.userLocation)
                 .tint(.blue)
 
-            ForEach(viewModel.friends) { friend in
-                Marker(friend.displayName, systemImage: "person.fill", coordinate: friend.coordinate)
-                    .tint(.orange)
+            ForEach(viewModel.friendAnnotations) { annotation in
+                Marker(
+                    annotation.displayName,
+                    systemImage: annotation.systemImageName,
+                    coordinate: annotation.coordinate
+                )
+                .tint(annotation.isStale ? .gray : .orange)
             }
         }
         .mapControls {
