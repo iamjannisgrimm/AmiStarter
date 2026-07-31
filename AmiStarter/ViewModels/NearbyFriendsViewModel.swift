@@ -11,6 +11,50 @@ final class NearbyFriendsViewModel {
 
     private(set) var friends: [Friend] = []
     private(set) var followedFriendID: Friend.ID?
+    private(set) var feedState: FriendFeedState = .loading
+    private(set) var hiddenInvalidLocationCount = 0
+    private(set) var notificationsAreUnavailable = false
+
+    var statusMessage: FriendFeedStatusMessage? {
+        if hiddenInvalidLocationCount > 0 {
+            return FriendFeedStatusMessage(
+                title: "Some locations were hidden",
+                message: Self.hiddenLocationMessage(count: hiddenInvalidLocationCount),
+                systemImageName: "location.slash"
+            )
+        }
+
+        switch feedState {
+        case .loading:
+            return FriendFeedStatusMessage(
+                title: "Loading friends",
+                message: "Checking recent locations...",
+                systemImageName: "location.magnifyingglass"
+            )
+        case .empty:
+            return FriendFeedStatusMessage(
+                title: "No friends to show",
+                message: "No recent friend location data is available right now.",
+                systemImageName: "person.2.slash"
+            )
+        case .failed(let message):
+            return FriendFeedStatusMessage(
+                title: "Unable to load friends",
+                message: message,
+                systemImageName: "exclamationmark.triangle"
+            )
+        case .ready:
+            if notificationsAreUnavailable {
+                return FriendFeedStatusMessage(
+                    title: "Nearby alerts are off",
+                    message: "You can still view friends on the map.",
+                    systemImageName: "bell.slash"
+                )
+            }
+
+            return nil
+        }
+    }
 
     var followedFriend: Friend? {
         guard let followedFriendID else { return nil }
@@ -76,10 +120,29 @@ final class NearbyFriendsViewModel {
     }
 
     func loadFriends() async {
-        let canNotify = await notificationService.requestAuthorization()
+        feedState = .loading
+        friends = []
+        hiddenInvalidLocationCount = 0
+        notificationsAreUnavailable = false
+        followedFriendID = nil
+        hasObservedInitialSnapshot = false
+        nearbyFriendIDs = []
 
-        for await snapshot in friendService.friendSnapshots() {
-            await handleSnapshot(snapshot, canNotify: canNotify)
+        let canNotify = await notificationService.requestAuthorization()
+        notificationsAreUnavailable = !canNotify
+
+        do {
+            for try await snapshot in friendService.friendSnapshots() {
+                await handleSnapshot(snapshot, canNotify: canNotify)
+            }
+
+            if !hasObservedInitialSnapshot {
+                feedState = .empty
+            }
+        } catch {
+            friends = []
+            hiddenInvalidLocationCount = 0
+            feedState = .failed(Self.errorMessage(for: error))
         }
     }
 
@@ -95,14 +158,18 @@ final class NearbyFriendsViewModel {
         _ snapshot: [Friend],
         canNotify: Bool
     ) async {
-        let nearbyFriends = snapshot.filter(isNearby)
+        let validFriends = snapshot.filter { CLLocationCoordinate2DIsValid($0.coordinate) }
+        hiddenInvalidLocationCount = snapshot.count - validFriends.count
+
+        let nearbyFriends = validFriends.filter(isNearby)
         let nearbyIDs = Set(nearbyFriends.map(\.id))
         let newlyNearbyFriends = nearbyFriends.filter { !nearbyFriendIDs.contains($0.id) }
 
-        friends = snapshot
+        friends = validFriends
         nearbyFriendIDs = nearbyIDs
+        feedState = validFriends.isEmpty ? .empty : .ready
 
-        if let followedFriendID, !snapshot.contains(where: { $0.id == followedFriendID }) {
+        if let followedFriendID, !validFriends.contains(where: { $0.id == followedFriendID }) {
             stopFollowing()
         }
 
@@ -128,6 +195,36 @@ final class NearbyFriendsViewModel {
 
         return userLocation.distance(from: friendLocation) <= Self.nearbyRadiusMeters
     }
+
+    private static func errorMessage(for error: Error) -> String {
+        if let localizedError = error as? LocalizedError,
+           let errorDescription = localizedError.errorDescription {
+            return errorDescription
+        }
+
+        return "Please try again in a moment."
+    }
+
+    private static func hiddenLocationMessage(count: Int) -> String {
+        if count == 1 {
+            return "1 friend location could not be shown."
+        }
+
+        return "\(count) friend locations could not be shown."
+    }
+}
+
+enum FriendFeedState: Equatable {
+    case loading
+    case ready
+    case empty
+    case failed(String)
+}
+
+struct FriendFeedStatusMessage: Equatable {
+    let title: String
+    let message: String
+    let systemImageName: String
 }
 
 struct FriendMapAnnotation: Identifiable, Equatable {

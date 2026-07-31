@@ -12,10 +12,8 @@ import Foundation
 ///        let friends = MockFriendService.seed
 ///
 /// 2. Live feed — a fresh `[Friend]` snapshot roughly every 2 seconds via a plain
-///    callback. Wrap it however you like:
-///        • Swift Concurrency — bridge it into an `AsyncStream`
-///        • Combine — forward it through a `PassthroughSubject`
-///        • or just observe the callback directly
+///    callback. The app bridges it through Swift Concurrency with
+///    `AsyncThrowingStream`.
 ///
 ///        let service = MockFriendService()
 ///        service.start { friends in /* ... */ }
@@ -44,8 +42,8 @@ final class MockFriendService: FriendServiceProtocol {
         Self.currentUserLocation
     }
 
-    func friendSnapshots() -> AsyncStream<[Friend]> {
-        AsyncStream { continuation in
+    func friendSnapshots() -> AsyncThrowingStream<[Friend], Error> {
+        AsyncThrowingStream { continuation in
             start { friends in
                 continuation.yield(friends)
             }

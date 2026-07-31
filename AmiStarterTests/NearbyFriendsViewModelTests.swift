@@ -24,6 +24,8 @@ struct NearbyFriendsViewModelTests {
         await viewModel.loadFriends()
 
         #expect(viewModel.friends == expectedFriends)
+        #expect(viewModel.feedState == .ready)
+        #expect(viewModel.statusMessage == nil)
         #expect(notificationService.authorizationRequestCount == 1)
     }
 
@@ -278,6 +280,129 @@ struct NearbyFriendsViewModelTests {
         #expect(notificationService.notifiedFriendGroups == [[firstNearbyFriend], [secondNearbyFriend]])
     }
 
+    @Test func loadFriendsShowsEmptyStateWhenSnapshotHasNoFriends() async {
+        let service = MockFriendStreamService(snapshots: [[]])
+        let viewModel = NearbyFriendsViewModel(
+            friendService: service,
+            notificationService: MockNearbyFriendNotificationService()
+        )
+
+        await viewModel.loadFriends()
+
+        #expect(viewModel.friends.isEmpty)
+        #expect(viewModel.feedState == .empty)
+        #expect(viewModel.statusMessage?.title == "No friends to show")
+    }
+
+    @Test func loadFriendsShowsEmptyStateWhenStreamFinishesWithoutAnySnapshots() async {
+        let service = MockFriendStreamService(snapshots: [])
+        let viewModel = NearbyFriendsViewModel(
+            friendService: service,
+            notificationService: MockNearbyFriendNotificationService()
+        )
+
+        await viewModel.loadFriends()
+
+        #expect(viewModel.friends.isEmpty)
+        #expect(viewModel.feedState == .empty)
+        #expect(viewModel.statusMessage?.systemImageName == "person.2.slash")
+    }
+
+    @Test func loadFriendsShowsFailureStateWhenServiceThrows() async {
+        let service = MockFriendStreamService(
+            snapshots: [],
+            failure: FriendStreamTestError.unavailable
+        )
+        let viewModel = NearbyFriendsViewModel(
+            friendService: service,
+            notificationService: MockNearbyFriendNotificationService()
+        )
+
+        await viewModel.loadFriends()
+
+        #expect(viewModel.friends.isEmpty)
+        #expect(viewModel.feedState == .failed("Friend location data is unavailable."))
+        #expect(viewModel.statusMessage?.title == "Unable to load friends")
+        #expect(viewModel.statusMessage?.message == "Friend location data is unavailable.")
+    }
+
+    @Test func loadFriendsHidesInvalidCoordinatesAndShowsWarning() async {
+        let validFriend = Friend(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            displayName: "Ada Chen",
+            coordinate: CLLocationCoordinate2D(latitude: 37.7761, longitude: -122.4203),
+            lastUpdated: Date(timeIntervalSince1970: 1_800)
+        )
+        let invalidFriend = Friend(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+            displayName: "Invalid Friend",
+            coordinate: CLLocationCoordinate2D(latitude: 200, longitude: -122.4203),
+            lastUpdated: Date(timeIntervalSince1970: 1_800)
+        )
+        let service = MockFriendStreamService(snapshots: [[validFriend, invalidFriend]])
+        let viewModel = NearbyFriendsViewModel(
+            friendService: service,
+            notificationService: MockNearbyFriendNotificationService()
+        )
+
+        await viewModel.loadFriends()
+
+        #expect(viewModel.friends == [validFriend])
+        #expect(viewModel.hiddenInvalidLocationCount == 1)
+        #expect(viewModel.feedState == .ready)
+        #expect(viewModel.statusMessage?.title == "Some locations were hidden")
+    }
+
+    @Test func loadFriendsShowsInvalidLocationWarningWhenEveryLocationIsInvalid() async {
+        let invalidFriends = [
+            Friend(
+                id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+                displayName: "Invalid One",
+                coordinate: CLLocationCoordinate2D(latitude: 200, longitude: -122.4203),
+                lastUpdated: Date(timeIntervalSince1970: 1_800)
+            ),
+            Friend(
+                id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+                displayName: "Invalid Two",
+                coordinate: CLLocationCoordinate2D(latitude: 37.7761, longitude: -200),
+                lastUpdated: Date(timeIntervalSince1970: 1_800)
+            )
+        ]
+        let service = MockFriendStreamService(snapshots: [invalidFriends])
+        let viewModel = NearbyFriendsViewModel(
+            friendService: service,
+            notificationService: MockNearbyFriendNotificationService()
+        )
+
+        await viewModel.loadFriends()
+
+        #expect(viewModel.friends.isEmpty)
+        #expect(viewModel.hiddenInvalidLocationCount == 2)
+        #expect(viewModel.feedState == .empty)
+        #expect(viewModel.statusMessage?.title == "Some locations were hidden")
+        #expect(viewModel.statusMessage?.message == "2 friend locations could not be shown.")
+    }
+
+    @Test func loadFriendsShowsNotificationUnavailableWarningWhenAuthorizationIsDeniedAndDataLoads() async {
+        let friend = Friend(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            displayName: "Ada Chen",
+            coordinate: CLLocationCoordinate2D(latitude: 37.7761, longitude: -122.4203),
+            lastUpdated: Date(timeIntervalSince1970: 1_800)
+        )
+        let service = MockFriendStreamService(snapshots: [[friend]])
+        let viewModel = NearbyFriendsViewModel(
+            friendService: service,
+            notificationService: MockNearbyFriendNotificationService(authorizationResult: false)
+        )
+
+        await viewModel.loadFriends()
+
+        #expect(viewModel.notificationsAreUnavailable)
+        #expect(viewModel.feedState == .ready)
+        #expect(viewModel.statusMessage?.title == "Nearby alerts are off")
+    }
+
     @Test func followFriendStoresSelectedFriendAndRegion() async {
         let friendID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
         let friend = Friend(
@@ -392,17 +517,24 @@ private final class MockFriendStreamService: FriendServiceProtocol {
     let userLocation = CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194)
 
     private let snapshots: [[Friend]]
+    private let failure: Error?
 
-    init(snapshots: [[Friend]]) {
+    init(snapshots: [[Friend]], failure: Error? = nil) {
         self.snapshots = snapshots
+        self.failure = failure
     }
 
-    func friendSnapshots() -> AsyncStream<[Friend]> {
-        AsyncStream { continuation in
+    func friendSnapshots() -> AsyncThrowingStream<[Friend], Error> {
+        AsyncThrowingStream { continuation in
             for snapshot in snapshots {
                 continuation.yield(snapshot)
             }
-            continuation.finish()
+
+            if let failure {
+                continuation.finish(throwing: failure)
+            } else {
+                continuation.finish()
+            }
         }
     }
 }
@@ -430,19 +562,19 @@ private final class MockNearbyFriendNotificationService: NearbyFriendNotificatio
 private final class ControlledFriendStreamService: FriendServiceProtocol {
     let userLocation = CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194)
 
-    private let stream: AsyncStream<[Friend]>
-    private let continuation: AsyncStream<[Friend]>.Continuation
+    private let stream: AsyncThrowingStream<[Friend], Error>
+    private let continuation: AsyncThrowingStream<[Friend], Error>.Continuation
 
     init(initialSnapshot: [Friend]) {
-        var capturedContinuation: AsyncStream<[Friend]>.Continuation?
-        stream = AsyncStream { continuation in
+        var capturedContinuation: AsyncThrowingStream<[Friend], Error>.Continuation?
+        stream = AsyncThrowingStream { continuation in
             capturedContinuation = continuation
         }
         continuation = capturedContinuation!
         continuation.yield(initialSnapshot)
     }
 
-    func friendSnapshots() -> AsyncStream<[Friend]> {
+    func friendSnapshots() -> AsyncThrowingStream<[Friend], Error> {
         stream
     }
 
@@ -452,5 +584,13 @@ private final class ControlledFriendStreamService: FriendServiceProtocol {
 
     func finish() {
         continuation.finish()
+    }
+}
+
+private enum FriendStreamTestError: LocalizedError {
+    case unavailable
+
+    var errorDescription: String? {
+        "Friend location data is unavailable."
     }
 }

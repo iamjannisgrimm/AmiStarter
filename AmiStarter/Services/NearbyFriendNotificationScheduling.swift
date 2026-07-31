@@ -13,3 +13,11 @@ struct NoopNearbyFriendNotificationService: NearbyFriendNotificationScheduling {
 
     func notifyNearbyFriends(_ friends: [Friend]) async {}
 }
+
+struct AuthorizedNoopNearbyFriendNotificationService: NearbyFriendNotificationScheduling {
+    func requestAuthorization() async -> Bool {
+        true
+    }
+
+    func notifyNearbyFriends(_ friends: [Friend]) async {}
+}

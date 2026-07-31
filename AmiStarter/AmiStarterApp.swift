@@ -17,14 +17,28 @@ struct AmiStarterApp: App {
 
     @MainActor
     private func makeViewModel() -> NearbyFriendsViewModel {
-        if ProcessInfo.processInfo.arguments.contains("--ui-testing") {
+        let arguments = ProcessInfo.processInfo.arguments
+
+        if arguments.contains("--ui-testing") {
             return NearbyFriendsViewModel(
-                friendService: UITestFriendService(),
-                notificationService: NoopNearbyFriendNotificationService(),
+                friendService: UITestFriendService(scenario: uiTestScenario(from: arguments)),
+                notificationService: AuthorizedNoopNearbyFriendNotificationService(),
                 now: { Date(timeIntervalSince1970: 1_800) }
             )
         }
 
         return NearbyFriendsViewModel()
+    }
+
+    private func uiTestScenario(from arguments: [String]) -> UITestFriendService.Scenario {
+        if arguments.contains("--ui-testing-empty-friends") {
+            return .empty
+        }
+
+        if arguments.contains("--ui-testing-friend-error") {
+            return .failure
+        }
+
+        return .populated
     }
 }

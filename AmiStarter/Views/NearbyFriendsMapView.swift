@@ -43,6 +43,12 @@ struct NearbyFriendsMapView: View {
             MapPitchToggle()
             MapScaleView()
         }
+        .overlay(alignment: .top) {
+            if let statusMessage = viewModel.statusMessage {
+                FriendFeedStatusBanner(statusMessage: statusMessage)
+                    .padding()
+            }
+        }
         .onChange(of: viewModel.friendAnnotations, initial: true) { oldAnnotations, newAnnotations in
             animateAnnotations(from: oldAnnotations, to: newAnnotations)
         }
@@ -179,5 +185,35 @@ private struct FriendMapMarker: View {
             showsMovementPulse = false
             movementPulseExpanded = false
         }
+    }
+}
+
+private struct FriendFeedStatusBanner: View {
+    let statusMessage: FriendFeedStatusMessage
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: statusMessage.systemImageName)
+                .font(.headline)
+                .foregroundStyle(.secondary)
+                .frame(width: 28, height: 28)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(statusMessage.title)
+                    .font(.headline)
+
+                Text(statusMessage.message)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(statusMessage.title)
+        .accessibilityValue(statusMessage.message)
+        .accessibilityIdentifier("friend-feed-status-banner")
     }
 }

@@ -4,5 +4,5 @@ import CoreLocation
 protocol FriendServiceProtocol {
     var userLocation: CLLocationCoordinate2D { get }
 
-    func friendSnapshots() -> AsyncStream<[Friend]>
+    func friendSnapshots() -> AsyncThrowingStream<[Friend], Error>
 }

@@ -31,7 +31,7 @@ struct MockFriendServiceTests {
         let service = MockFriendService()
         var iterator = service.friendSnapshots().makeAsyncIterator()
 
-        let snapshot = await iterator.next()
+        let snapshot = try? await iterator.next()
         service.stop()
 
         #expect(snapshot?.count == MockFriendService.seed.count)
@@ -42,8 +42,8 @@ struct MockFriendServiceTests {
         let service = UITestFriendService()
         var iterator = service.friendSnapshots().makeAsyncIterator()
 
-        let firstSnapshot = await iterator.next()
-        let secondSnapshot = await iterator.next()
+        let firstSnapshot = try? await iterator.next()
+        let secondSnapshot = try? await iterator.next()
 
         #expect(firstSnapshot?.map(\.displayName) == ["Ada Chen", "Sam Okafor", "Dana Lee"])
         #expect(secondSnapshot == nil)
