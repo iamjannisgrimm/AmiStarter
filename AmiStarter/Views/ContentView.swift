@@ -8,8 +8,17 @@
 import SwiftUI
 
 struct ContentView: View {
-    @State private var viewModel = NearbyFriendsViewModel()
+    @State private var viewModel: NearbyFriendsViewModel
     @State private var isShowingFriendsList = false
+
+    @MainActor
+    init() {
+        self.init(viewModel: NearbyFriendsViewModel())
+    }
+
+    init(viewModel: NearbyFriendsViewModel) {
+        _viewModel = State(wrappedValue: viewModel)
+    }
 
     var body: some View {
         NavigationStack {
@@ -23,6 +32,7 @@ struct ContentView: View {
                             Image(systemName: "list.bullet")
                         }
                         .accessibilityLabel("Friends")
+                        .accessibilityIdentifier("friends-list-button")
                     }
                 }
                 .sheet(isPresented: $isShowingFriendsList) {

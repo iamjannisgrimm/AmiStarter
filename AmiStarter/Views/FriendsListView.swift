@@ -20,7 +20,7 @@ struct FriendsListView: View {
                         Text(annotation.friend.displayName)
                             .font(.headline)
 
-                        Text(annotation.isStale ? "Stale location" : "Fresh location")
+                        Text(annotation.locationFreshnessLabel)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
@@ -30,13 +30,19 @@ struct FriendsListView: View {
                     if viewModel.followedFriendID == annotation.id {
                         Image(systemName: "location.fill")
                             .foregroundStyle(.blue)
+                            .accessibilityLabel("Following \(annotation.friend.displayName)")
+                            .accessibilityIdentifier("following-indicator-\(annotation.friend.displayName)")
                     }
                 }
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("\(annotation.friend.displayName), \(annotation.locationFreshnessLabel)")
+            .accessibilityValue(viewModel.followedFriendID == annotation.id ? "Following" : "")
+            .accessibilityIdentifier("friend-row-\(annotation.friend.displayName)")
         }
         .navigationTitle("Friends")
+        .accessibilityIdentifier("friends-list")
     }
 }
 

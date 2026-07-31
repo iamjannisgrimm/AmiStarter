@@ -36,9 +36,11 @@ struct NearbyFriendsMapView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(annotation.displayName)
+                    .accessibilityIdentifier("friend-map-marker-\(annotation.friend.displayName)")
                 }
             }
         }
+        .accessibilityIdentifier("friends-map")
         .mapControls {
             MapCompass()
             MapPitchToggle()

@@ -146,6 +146,10 @@ struct FriendMapAnnotation: Identifiable, Equatable {
         isStale ? "clock.badge.exclamationmark" : "person.fill"
     }
 
+    var locationFreshnessLabel: String {
+        isStale ? "Stale location" : "Fresh location"
+    }
+
     var coordinate: CLLocationCoordinate2D {
         friend.coordinate
     }
