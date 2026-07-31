@@ -5,11 +5,14 @@ struct NearbyFriendsMapView: View {
     let viewModel: NearbyFriendsViewModel
 
     @State private var mapPosition: MapCameraPosition
+    @State private var displayedAnnotations: [FriendMapAnnotation]
+    @State private var movingFriendIDs = Set<Friend.ID>()
     @State private var isUpdatingMapForFollow = false
 
     init(viewModel: NearbyFriendsViewModel) {
         self.viewModel = viewModel
         _mapPosition = State(wrappedValue: .region(viewModel.initialRegion))
+        _displayedAnnotations = State(wrappedValue: viewModel.friendAnnotations)
     }
 
     var body: some View {
@@ -17,22 +20,16 @@ struct NearbyFriendsMapView: View {
             Marker("You", systemImage: "location.fill", coordinate: viewModel.userLocation)
                 .tint(.blue)
 
-            ForEach(viewModel.friendAnnotations) { annotation in
+            ForEach(displayedAnnotations) { annotation in
                 Annotation(annotation.displayName, coordinate: annotation.coordinate) {
                     Button {
                         follow(annotation)
                     } label: {
-                        Image(systemName: annotation.systemImageName)
-                            .font(.title3)
-                            .foregroundStyle(.white)
-                            .frame(width: 34, height: 34)
-                            .background(annotation.isStale ? .gray : .orange, in: Circle())
-                            .overlay {
-                                if viewModel.followedFriendID == annotation.id {
-                                    Circle()
-                                        .stroke(.blue, lineWidth: 3)
-                                }
-                            }
+                        FriendMapMarker(
+                            annotation: annotation,
+                            isFollowed: viewModel.followedFriendID == annotation.id,
+                            isMoving: movingFriendIDs.contains(annotation.id)
+                        )
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(annotation.displayName)
@@ -45,6 +42,9 @@ struct NearbyFriendsMapView: View {
             MapCompass()
             MapPitchToggle()
             MapScaleView()
+        }
+        .onChange(of: viewModel.friendAnnotations, initial: true) { oldAnnotations, newAnnotations in
+            animateAnnotations(from: oldAnnotations, to: newAnnotations)
         }
         .onChange(of: viewModel.followedFriendMapFocus) { _, focus in
             guard focus != nil, let region = viewModel.followedFriendRegion else { return }
@@ -78,8 +78,106 @@ struct NearbyFriendsMapView: View {
             isUpdatingMapForFollow = false
         }
     }
+
+    private func animateAnnotations(
+        from oldAnnotations: [FriendMapAnnotation],
+        to newAnnotations: [FriendMapAnnotation]
+    ) {
+        let movedIDs = movedFriendIDs(from: oldAnnotations, to: newAnnotations)
+
+        movingFriendIDs.formUnion(movedIDs)
+
+        withAnimation(.smooth(duration: 0.85)) {
+            displayedAnnotations = newAnnotations
+        }
+
+        guard !movedIDs.isEmpty else { return }
+
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(900))
+            movingFriendIDs.subtract(movedIDs)
+        }
+    }
+
+    private func movedFriendIDs(
+        from oldAnnotations: [FriendMapAnnotation],
+        to newAnnotations: [FriendMapAnnotation]
+    ) -> Set<Friend.ID> {
+        let oldCoordinatesByID = Dictionary(uniqueKeysWithValues: oldAnnotations.map { annotation in
+            (annotation.id, annotation.coordinate)
+        })
+
+        return Set(newAnnotations.compactMap { annotation in
+            guard let oldCoordinate = oldCoordinatesByID[annotation.id],
+                  oldCoordinate.latitude != annotation.coordinate.latitude
+                    || oldCoordinate.longitude != annotation.coordinate.longitude
+            else {
+                return nil
+            }
+
+            return annotation.id
+        })
+    }
 }
 
 #Preview {
     NearbyFriendsMapView(viewModel: NearbyFriendsViewModel())
+}
+
+private struct FriendMapMarker: View {
+    let annotation: FriendMapAnnotation
+    let isFollowed: Bool
+    let isMoving: Bool
+
+    @State private var showsMovementPulse = false
+    @State private var movementPulseExpanded = false
+
+    var body: some View {
+        ZStack {
+            if showsMovementPulse {
+                Circle()
+                    .stroke(annotation.isStale ? .gray : .orange, lineWidth: 2)
+                    .frame(width: 34, height: 34)
+                    .scaleEffect(movementPulseExpanded ? 1.8 : 1)
+                    .opacity(movementPulseExpanded ? 0 : 0.55)
+            }
+
+            Image(systemName: annotation.systemImageName)
+                .font(.title3)
+                .foregroundStyle(.white)
+                .frame(width: 34, height: 34)
+                .background(annotation.isStale ? .gray : .orange, in: Circle())
+                .shadow(color: .black.opacity(0.18), radius: 6, y: 3)
+                .scaleEffect(isMoving ? 1.08 : 1)
+                .overlay {
+                    if isFollowed {
+                        Circle()
+                            .stroke(.blue, lineWidth: 3)
+                    }
+                }
+        }
+        .animation(.spring(response: 0.35, dampingFraction: 0.72), value: isMoving)
+        .onChange(of: isMoving) { _, newValue in
+            guard newValue else { return }
+
+            playMovementPulse()
+        }
+    }
+
+    private func playMovementPulse() {
+        movementPulseExpanded = false
+        showsMovementPulse = true
+
+        Task { @MainActor in
+            await Task.yield()
+
+            withAnimation(.easeOut(duration: 0.85)) {
+                movementPulseExpanded = true
+            }
+
+            try? await Task.sleep(for: .milliseconds(850))
+            showsMovementPulse = false
+            movementPulseExpanded = false
+        }
+    }
 }
