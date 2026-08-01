@@ -39,6 +39,15 @@ struct ContentView: View {
                     NavigationStack {
                         FriendsListView(viewModel: viewModel)
                     }
+                    .frame(
+                        minWidth: 360,
+                        idealWidth: 420,
+                        maxWidth: 560,
+                        minHeight: 520,
+                        idealHeight: 640
+                    )
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
                 }
         }
         .task {
