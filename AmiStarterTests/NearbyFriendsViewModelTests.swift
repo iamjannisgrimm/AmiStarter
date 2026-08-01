@@ -107,6 +107,36 @@ struct NearbyFriendsViewModelTests {
         #expect(notificationService.notifiedFriendGroups.first == [nearbyFriend])
     }
 
+    @Test func loadFriendsNotifiesWithinFiveHundredMetersNotFeet() async {
+        let friendID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+        let userLocation = CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194)
+        let farFriend = Friend(
+            id: friendID,
+            displayName: "Dana Lee",
+            coordinate: CLLocationCoordinate2D(latitude: 37.7839, longitude: -122.4114),
+            lastUpdated: Date(timeIntervalSince1970: 1_800)
+        )
+        let withinFiveHundredMetersButOutsideFiveHundredFeetFriend = Friend(
+            id: friendID,
+            displayName: "Dana Lee",
+            coordinate: coordinate(from: userLocation, metersNorth: 300),
+            lastUpdated: Date(timeIntervalSince1970: 1_900)
+        )
+        let service = MockFriendStreamService(
+            userLocation: userLocation,
+            snapshots: [[farFriend], [withinFiveHundredMetersButOutsideFiveHundredFeetFriend]]
+        )
+        let notificationService = MockNearbyFriendNotificationService()
+        let viewModel = NearbyFriendsViewModel(
+            friendService: service,
+            notificationService: notificationService
+        )
+
+        await viewModel.loadFriends()
+
+        #expect(notificationService.notifiedFriendGroups == [[withinFiveHundredMetersButOutsideFiveHundredFeetFriend]])
+    }
+
     @Test func loadFriendsGroupsFriendsThatBecomeNearbyTogether() async {
         let firstID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
         let secondID = UUID(uuidString: "00000000-0000-0000-0000-000000000002")!
@@ -514,12 +544,17 @@ struct NearbyFriendsViewModelTests {
 }
 
 private final class MockFriendStreamService: FriendServiceProtocol {
-    let userLocation = CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194)
+    let userLocation: CLLocationCoordinate2D
 
     private let snapshots: [[Friend]]
     private let failure: Error?
 
-    init(snapshots: [[Friend]], failure: Error? = nil) {
+    init(
+        userLocation: CLLocationCoordinate2D = CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
+        snapshots: [[Friend]],
+        failure: Error? = nil
+    ) {
+        self.userLocation = userLocation
         self.snapshots = snapshots
         self.failure = failure
     }
@@ -593,4 +628,14 @@ private enum FriendStreamTestError: LocalizedError {
     var errorDescription: String? {
         "Friend location data is unavailable."
     }
+}
+
+private func coordinate(
+    from coordinate: CLLocationCoordinate2D,
+    metersNorth: CLLocationDistance
+) -> CLLocationCoordinate2D {
+    CLLocationCoordinate2D(
+        latitude: coordinate.latitude + metersNorth / 111_000,
+        longitude: coordinate.longitude
+    )
 }
