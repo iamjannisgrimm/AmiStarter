@@ -356,6 +356,28 @@ struct NearbyFriendsViewModelTests {
         #expect(viewModel.statusMessage?.message == "Friend location data is unavailable.")
     }
 
+    @Test func cancellationPreservesTheLatestLoadedSnapshot() async {
+        let friend = Friend(
+            displayName: "Ada Chen",
+            coordinate: CLLocationCoordinate2D(latitude: 37.7761, longitude: -122.4203),
+            lastUpdated: Date(timeIntervalSince1970: 1_800)
+        )
+        let service = MockFriendStreamService(
+            snapshots: [[friend]],
+            failure: CancellationError()
+        )
+        let viewModel = NearbyFriendsViewModel(
+            friendService: service,
+            notificationService: MockNearbyFriendNotificationService()
+        )
+
+        await viewModel.loadFriends()
+
+        #expect(viewModel.friends == [friend])
+        #expect(viewModel.feedState == .ready)
+        #expect(viewModel.statusMessage == nil)
+    }
+
     @Test func loadFriendsHidesInvalidCoordinatesAndShowsWarning() async {
         let validFriend = Friend(
             id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
@@ -433,6 +455,37 @@ struct NearbyFriendsViewModelTests {
         #expect(viewModel.statusMessage?.title == "Nearby alerts are off")
     }
 
+    @Test func loadFriendsShowsNotificationUnavailableWarningWhenSchedulingFails() async {
+        let friendID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+        let farFriend = Friend(
+            id: friendID,
+            displayName: "Dana Lee",
+            coordinate: CLLocationCoordinate2D(latitude: 37.7839, longitude: -122.4114),
+            lastUpdated: Date(timeIntervalSince1970: 1_800)
+        )
+        let nearbyFriend = Friend(
+            id: friendID,
+            displayName: "Dana Lee",
+            coordinate: CLLocationCoordinate2D(latitude: 37.7752, longitude: -122.4196),
+            lastUpdated: Date(timeIntervalSince1970: 1_900)
+        )
+        let service = MockFriendStreamService(snapshots: [[farFriend], [nearbyFriend]])
+        let notificationService = MockNearbyFriendNotificationService(
+            notificationError: NotificationTestError.schedulingFailed
+        )
+        let viewModel = NearbyFriendsViewModel(
+            friendService: service,
+            notificationService: notificationService
+        )
+
+        await viewModel.loadFriends()
+
+        #expect(viewModel.friends == [nearbyFriend])
+        #expect(viewModel.feedState == .ready)
+        #expect(viewModel.notificationsAreUnavailable)
+        #expect(viewModel.statusMessage?.title == "Nearby alerts are off")
+    }
+
     @Test func followFriendStoresSelectedFriendAndRegion() async {
         let friendID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
         let friend = Friend(
@@ -480,7 +533,9 @@ struct NearbyFriendsViewModelTests {
             await viewModel.loadFriends()
         }
 
-        await Task.yield()
+        let didLoadInitialSnapshot = await waitUntil { viewModel.friends == [firstLocation] }
+        #expect(didLoadInitialSnapshot)
+
         viewModel.followFriend(id: friendID)
         service.yield([updatedLocation])
         service.finish()
@@ -514,6 +569,25 @@ struct NearbyFriendsViewModelTests {
         #expect(viewModel.followedFriendRegion == nil)
     }
 
+    @Test func followFriendIgnoresUnknownFriendID() async {
+        let friend = Friend(
+            displayName: "Ada Chen",
+            coordinate: CLLocationCoordinate2D(latitude: 37.7761, longitude: -122.4203),
+            lastUpdated: Date(timeIntervalSince1970: 1_800)
+        )
+        let service = MockFriendStreamService(snapshots: [[friend]])
+        let viewModel = NearbyFriendsViewModel(
+            friendService: service,
+            notificationService: MockNearbyFriendNotificationService()
+        )
+
+        await viewModel.loadFriends()
+        viewModel.followFriend(id: UUID())
+
+        #expect(viewModel.followedFriendID == nil)
+        #expect(viewModel.followedFriend == nil)
+    }
+
     @Test func loadFriendsClearsFollowedFriendWhenFriendDisappears() async {
         let friendID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
         let friend = Friend(
@@ -532,7 +606,9 @@ struct NearbyFriendsViewModelTests {
             await viewModel.loadFriends()
         }
 
-        await Task.yield()
+        let didLoadInitialSnapshot = await waitUntil { viewModel.friends == [friend] }
+        #expect(didLoadInitialSnapshot)
+
         viewModel.followFriend(id: friendID)
         service.yield([])
         service.finish()
@@ -579,9 +655,14 @@ private final class MockNearbyFriendNotificationService: NearbyFriendNotificatio
     private(set) var notifiedFriendGroups: [[Friend]] = []
 
     private let authorizationResult: Bool
+    private let notificationError: Error?
 
-    init(authorizationResult: Bool = true) {
+    init(
+        authorizationResult: Bool = true,
+        notificationError: Error? = nil
+    ) {
         self.authorizationResult = authorizationResult
+        self.notificationError = notificationError
     }
 
     func requestAuthorization() async -> Bool {
@@ -589,7 +670,11 @@ private final class MockNearbyFriendNotificationService: NearbyFriendNotificatio
         return authorizationResult
     }
 
-    func notifyNearbyFriends(_ friends: [Friend]) async {
+    func notifyNearbyFriends(_ friends: [Friend]) async throws {
+        if let notificationError {
+            throw notificationError
+        }
+
         notifiedFriendGroups.append(friends)
     }
 }
@@ -630,6 +715,10 @@ private enum FriendStreamTestError: LocalizedError {
     }
 }
 
+private enum NotificationTestError: Error {
+    case schedulingFailed
+}
+
 private func coordinate(
     from coordinate: CLLocationCoordinate2D,
     metersNorth: CLLocationDistance
@@ -638,4 +727,19 @@ private func coordinate(
         latitude: coordinate.latitude + metersNorth / 111_000,
         longitude: coordinate.longitude
     )
+}
+
+private func waitUntil(
+    maxAttempts: Int = 1_000,
+    condition: () -> Bool
+) async -> Bool {
+    for _ in 0..<maxAttempts {
+        if condition() {
+            return true
+        }
+
+        await Task.yield()
+    }
+
+    return condition()
 }

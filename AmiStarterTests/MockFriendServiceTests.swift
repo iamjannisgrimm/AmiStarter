@@ -38,6 +38,20 @@ struct MockFriendServiceTests {
         #expect(snapshot?.map(\.displayName) == MockFriendService.seed.map(\.displayName))
     }
 
+    @Test func stoppingServiceDoesNotEmitAnotherSnapshot() async {
+        let service = MockFriendService()
+        var snapshotCount = 0
+
+        service.start { _ in
+            snapshotCount += 1
+        }
+        service.stop()
+
+        try? await Task.sleep(for: .milliseconds(50))
+
+        #expect(snapshotCount == 1)
+    }
+
     @Test func uiTestFriendServiceYieldsDeterministicSnapshotAndFinishes() async {
         let service = UITestFriendService()
         var iterator = service.friendSnapshots().makeAsyncIterator()

@@ -3,7 +3,7 @@ import UserNotifications
 final class NearbyFriendNotificationPresentationDelegate: NSObject, UNUserNotificationCenterDelegate {
     static let shared = NearbyFriendNotificationPresentationDelegate()
 
-    let presentationOptions: UNNotificationPresentationOptions = [.banner, .list, .sound, .badge]
+    let presentationOptions: UNNotificationPresentationOptions = [.banner, .list, .sound]
 
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,

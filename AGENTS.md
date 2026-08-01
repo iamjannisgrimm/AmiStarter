@@ -22,7 +22,7 @@ Keep `AmiStarter/AmiStarter` organized by responsibility, matching the PilotApp 
 Current starter files are placed as:
 
 - `AmiStarter/Models/Friend.swift`
-- `AmiStarter/Services/MockFriendService.swift`
+- `AmiStarter/Services/Friends/MockFriendService.swift`
 - `AmiStarter/Views/ContentView.swift`
 
 ## Implementation Preferences

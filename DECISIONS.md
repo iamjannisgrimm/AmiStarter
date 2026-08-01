@@ -58,7 +58,7 @@ The app stays close to Apple's platform and adds no third-party dependencies:
 
 ### Swift Concurrency
 
-The supplied Swift Concurrency guide was treated as an implementation constraint. The app uses `async`/`await`, `Task`, main-actor isolation, cancellation, and `AsyncThrowingStream`. It does not use Combine or `DispatchQueue` for application concurrency.
+The supplied Swift Concurrency guide was treated as an implementation constraint. The targets use Swift 6 language mode with `async`/`await`, `Task`, main-actor isolation, cancellation, and `AsyncThrowingStream`. The app does not use Combine or `DispatchQueue` for application concurrency.
 
 The starter's callback feed is adapted into an `AsyncThrowingStream`, which naturally represents repeated snapshots, supports cancellation, and makes service failures part of the contract.
 
@@ -91,7 +91,7 @@ Notifications are transition-based:
 - Leaving and later re-entering can trigger another alert.
 - Denied authorization prevents scheduling without blocking the map.
 
-A notification-center delegate opts into banner, list, sound, and badge presentation while the app is open.
+A notification-center delegate opts into banner, list, and sound presentation while the app is open. Badge permission is not requested because the app does not maintain badge state.
 
 The current mock feed is active while the app is running. An already scheduled notification can appear in the background, but new background proximity calculations would require a real background-capable data source and appropriate background modes. That is intentionally outside this exercise.
 

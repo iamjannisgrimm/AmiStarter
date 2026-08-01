@@ -67,7 +67,12 @@ final class MockFriendService: FriendServiceProtocol {
 
             var tick = 0
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(2))
+                do {
+                    try await Task.sleep(for: .seconds(2))
+                } catch {
+                    return
+                }
+
                 tick += 1
                 friends = MockFriendService.advance(friends, tick: tick)
                 onUpdate(friends)

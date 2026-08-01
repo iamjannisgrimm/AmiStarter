@@ -139,6 +139,8 @@ final class NearbyFriendsViewModel {
             if !hasObservedInitialSnapshot {
                 feedState = .empty
             }
+        } catch is CancellationError {
+            return
         } catch {
             friends = []
             hiddenInvalidLocationCount = 0
@@ -147,6 +149,8 @@ final class NearbyFriendsViewModel {
     }
 
     func followFriend(id: Friend.ID) {
+        guard friends.contains(where: { $0.id == id }) else { return }
+
         followedFriendID = id
     }
 
@@ -174,12 +178,21 @@ final class NearbyFriendsViewModel {
         }
 
         guard hasObservedInitialSnapshot else {
+            // Friends already nearby at launch establish the baseline; only later
+            // outside-to-inside transitions should interrupt the user.
             hasObservedInitialSnapshot = true
             return
         }
 
         if canNotify, !newlyNearbyFriends.isEmpty {
-            await notificationService.notifyNearbyFriends(newlyNearbyFriends)
+            do {
+                try await notificationService.notifyNearbyFriends(newlyNearbyFriends)
+                notificationsAreUnavailable = false
+            } catch is CancellationError {
+                return
+            } catch {
+                notificationsAreUnavailable = true
+            }
         }
     }
 

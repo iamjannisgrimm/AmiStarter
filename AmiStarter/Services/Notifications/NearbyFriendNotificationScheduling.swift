@@ -3,7 +3,7 @@ import Foundation
 @MainActor
 protocol NearbyFriendNotificationScheduling {
     func requestAuthorization() async -> Bool
-    func notifyNearbyFriends(_ friends: [Friend]) async
+    func notifyNearbyFriends(_ friends: [Friend]) async throws
 }
 
 struct NoopNearbyFriendNotificationService: NearbyFriendNotificationScheduling {
@@ -11,7 +11,7 @@ struct NoopNearbyFriendNotificationService: NearbyFriendNotificationScheduling {
         false
     }
 
-    func notifyNearbyFriends(_ friends: [Friend]) async {}
+    func notifyNearbyFriends(_ friends: [Friend]) async throws {}
 }
 
 struct AuthorizedNoopNearbyFriendNotificationService: NearbyFriendNotificationScheduling {
@@ -19,5 +19,5 @@ struct AuthorizedNoopNearbyFriendNotificationService: NearbyFriendNotificationSc
         true
     }
 
-    func notifyNearbyFriends(_ friends: [Friend]) async {}
+    func notifyNearbyFriends(_ friends: [Friend]) async throws {}
 }

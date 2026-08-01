@@ -50,8 +50,8 @@ struct NearbyFriendsMapView: View {
                     .padding()
             }
         }
-        .onChange(of: viewModel.friendAnnotations, initial: true) { oldAnnotations, newAnnotations in
-            animateAnnotations(from: oldAnnotations, to: newAnnotations)
+        .onChange(of: viewModel.friendAnnotations, initial: true) { _, newAnnotations in
+            animateAnnotations(to: newAnnotations)
         }
         .onChange(of: viewModel.followedFriendMapFocus) { _, focus in
             guard focus != nil, let region = viewModel.followedFriendRegion else { return }
@@ -91,14 +91,14 @@ struct NearbyFriendsMapView: View {
         }
     }
 
-    private func animateAnnotations(
-        from oldAnnotations: [FriendMapAnnotation],
-        to newAnnotations: [FriendMapAnnotation]
-    ) {
+    private func animateAnnotations(to newAnnotations: [FriendMapAnnotation]) {
         annotationAnimationTask?.cancel()
         movingFriendIDs.removeAll()
 
-        let movedIDs = movedFriendIDs(from: oldAnnotations, to: newAnnotations)
+        // Begin at the currently displayed frame so overlapping updates never
+        // jump backward to the previous service snapshot.
+        let startAnnotations = displayedAnnotations
+        let movedIDs = movedFriendIDs(from: startAnnotations, to: newAnnotations)
 
         movingFriendIDs.formUnion(movedIDs)
 
@@ -117,12 +117,18 @@ struct NearbyFriendsMapView: View {
 
                 let progress = Double(frame) / Double(frameCount)
                 displayedAnnotations = interpolatedAnnotations(
-                    from: oldAnnotations,
+                    from: startAnnotations,
                     to: newAnnotations,
                     progress: easedAnimationProgress(progress)
                 )
 
-                try? await Task.sleep(for: .milliseconds(frameDelay))
+                if frame < frameCount {
+                    do {
+                        try await Task.sleep(for: .milliseconds(frameDelay))
+                    } catch {
+                        return
+                    }
+                }
             }
 
             if Task.isCancelled { return }
@@ -236,25 +242,27 @@ private struct FriendMapMarker: View {
                 }
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.72), value: isMoving)
-        .onChange(of: isMoving) { _, newValue in
-            guard newValue else { return }
+        .task(id: isMoving) {
+            guard isMoving else {
+                showsMovementPulse = false
+                movementPulseExpanded = false
+                return
+            }
 
-            playMovementPulse()
-        }
-    }
-
-    private func playMovementPulse() {
-        movementPulseExpanded = false
-        showsMovementPulse = true
-
-        Task { @MainActor in
+            movementPulseExpanded = false
+            showsMovementPulse = true
             await Task.yield()
 
             withAnimation(.easeOut(duration: 0.85)) {
                 movementPulseExpanded = true
             }
 
-            try? await Task.sleep(for: .milliseconds(850))
+            do {
+                try await Task.sleep(for: .milliseconds(850))
+            } catch {
+                return
+            }
+
             showsMovementPulse = false
             movementPulseExpanded = false
         }

@@ -11,6 +11,6 @@ struct NearbyFriendNotificationPresentationDelegateTests {
         #expect(options.contains(.banner))
         #expect(options.contains(.list))
         #expect(options.contains(.sound))
-        #expect(options.contains(.badge))
+        #expect(!options.contains(.badge))
     }
 }

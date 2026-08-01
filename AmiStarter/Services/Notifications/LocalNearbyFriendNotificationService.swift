@@ -9,19 +9,20 @@ struct LocalNearbyFriendNotificationService: NearbyFriendNotificationScheduling 
         presentationDelegate: NearbyFriendNotificationPresentationDelegate = .shared
     ) {
         self.notificationCenter = notificationCenter
+        // UNUserNotificationCenter retains its delegate weakly.
         self.presentationDelegate = presentationDelegate
         notificationCenter.delegate = presentationDelegate
     }
 
     func requestAuthorization() async -> Bool {
         do {
-            return try await notificationCenter.requestAuthorization(options: [.alert, .badge, .sound])
+            return try await notificationCenter.requestAuthorization(options: [.alert, .sound])
         } catch {
             return false
         }
     }
 
-    func notifyNearbyFriends(_ friends: [Friend]) async {
+    func notifyNearbyFriends(_ friends: [Friend]) async throws {
         guard !friends.isEmpty else { return }
 
         let content = UNMutableNotificationContent()
@@ -36,7 +37,7 @@ struct LocalNearbyFriendNotificationService: NearbyFriendNotificationScheduling 
             trigger: nil
         )
 
-        try? await notificationCenter.add(request)
+        try await notificationCenter.add(request)
     }
 
     private func notificationTitle(for friends: [Friend]) -> String {
