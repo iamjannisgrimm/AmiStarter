@@ -2,9 +2,15 @@ import UserNotifications
 
 struct LocalNearbyFriendNotificationService: NearbyFriendNotificationScheduling {
     private let notificationCenter: UNUserNotificationCenter
+    private let presentationDelegate: NearbyFriendNotificationPresentationDelegate
 
-    init(notificationCenter: UNUserNotificationCenter = .current()) {
+    init(
+        notificationCenter: UNUserNotificationCenter = .current(),
+        presentationDelegate: NearbyFriendNotificationPresentationDelegate = .shared
+    ) {
         self.notificationCenter = notificationCenter
+        self.presentationDelegate = presentationDelegate
+        notificationCenter.delegate = presentationDelegate
     }
 
     func requestAuthorization() async -> Bool {
